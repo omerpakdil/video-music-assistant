@@ -1,11 +1,15 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
-import OnboardingScreen from '../screens/OnboardingScreen';
+import WelcomeScreen from '../screens/WelcomeScreen';
+import OnboardingStep1Screen from '../screens/OnboardingStep1Screen';
+import OnboardingStep2Screen from '../screens/OnboardingStep2Screen';
+import OnboardingStep3Screen from '../screens/OnboardingStep3Screen';
+import FinalOnboardingScreen from '../screens/FinalOnboardingScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import SignInScreen from '../screens/SignInScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -15,15 +19,21 @@ import PreviewScreen from '../screens/PreviewScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import LibraryScreen from '../screens/LibraryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import PaywallScreen from '../screens/PaywallScreen';
 
 export type RootStackParamList = {
-  Onboarding: undefined;
+  Welcome: undefined;
+  OnboardingStep1: undefined;
+  OnboardingStep2: undefined;
+  OnboardingStep3: undefined;
+  FinalOnboarding: undefined;
   SignUp: undefined;
   SignIn: undefined;
   MainTabs: undefined;
   VideoUpload: undefined;
   MusicGeneration: { videoUri: string; prompt?: string };
   Preview: { videoUri: string; audioUri: string };
+  Paywall: undefined;
 };
 
 export type TabParamList = {
@@ -35,6 +45,46 @@ export type TabParamList = {
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
+
+// Smooth onboarding transition animations
+const onboardingTransition = {
+  gestureEnabled: true,
+  gestureDirection: 'horizontal' as const,
+  transitionSpec: {
+    open: {
+      animation: 'timing',
+      config: {
+        duration: 400,
+        easing: Easing.out(Easing.poly(4)),
+      },
+    },
+    close: {
+      animation: 'timing',
+      config: {
+        duration: 350,
+        easing: Easing.in(Easing.poly(4)),
+      },
+    },
+  },
+  cardStyleInterpolator: ({ current, layouts }: any) => {
+    return {
+      cardStyle: {
+        transform: [
+          {
+            translateX: current.progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [layouts.screen.width, 0],
+            }),
+          },
+        ],
+        opacity: current.progress.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0, 0.8, 1],
+        }),
+      },
+    };
+  },
+};
 
 function MainTabs() {
   return (
@@ -139,12 +189,46 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Onboarding"
+        initialRouteName="Welcome"
         screenOptions={{
           headerShown: false,
         }}
       >
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        <Stack.Screen
+          name="Welcome"
+          component={WelcomeScreen}
+          options={{
+            ...onboardingTransition,
+          }}
+        />
+        <Stack.Screen
+          name="OnboardingStep1"
+          component={OnboardingStep1Screen}
+          options={{
+            ...onboardingTransition,
+          }}
+        />
+        <Stack.Screen
+          name="OnboardingStep2"
+          component={OnboardingStep2Screen}
+          options={{
+            ...onboardingTransition,
+          }}
+        />
+        <Stack.Screen
+          name="OnboardingStep3"
+          component={OnboardingStep3Screen}
+          options={{
+            ...onboardingTransition,
+          }}
+        />
+        <Stack.Screen
+          name="FinalOnboarding"
+          component={FinalOnboardingScreen}
+          options={{
+            ...onboardingTransition,
+          }}
+        />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="SignIn" component={SignInScreen} />
         <Stack.Screen name="MainTabs" component={MainTabs} />
@@ -161,6 +245,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Preview"
           component={PreviewScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Paywall"
+          component={PaywallScreen}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>

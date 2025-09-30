@@ -9,11 +9,19 @@ import {
   StatusBar,
   Alert,
 } from 'react-native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserSubscription } from '../types';
 
-export default function ProfileScreen() {
+type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+
+interface Props {
+  navigation: ProfileScreenNavigationProp;
+}
+
+export default function ProfileScreen({ navigation }: Props) {
   const [notifications, setNotifications] = useState(true);
   const [autoSave, setAutoSave] = useState(false);
 
@@ -30,14 +38,7 @@ export default function ProfileScreen() {
   });
 
   const handleUpgrade = () => {
-    Alert.alert(
-      'Upgrade to Premium',
-      'Unlock unlimited music generation, high-quality exports, and commercial licensing.',
-      [
-        { text: 'Maybe Later', style: 'cancel' },
-        { text: 'Upgrade Now', onPress: () => console.log('Navigate to subscription') },
-      ]
-    );
+    navigation.navigate('Paywall');
   };
 
   const handleSupport = () => {

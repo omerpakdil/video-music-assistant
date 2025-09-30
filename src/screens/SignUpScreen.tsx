@@ -72,7 +72,7 @@ export default function SignUpScreen({ navigation }: Props) {
         [
           {
             text: 'Continue',
-            onPress: () => navigation.replace('MainTabs'),
+            onPress: () => navigation.replace('Paywall'),
           },
         ]
       );

@@ -11,18 +11,18 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
 
-type OnboardingScreenNavigationProp = StackNavigationProp<
+type FinalOnboardingScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
-  'Onboarding'
+  'FinalOnboarding'
 >;
 
 interface Props {
-  navigation: OnboardingScreenNavigationProp;
+  navigation: FinalOnboardingScreenNavigationProp;
 }
 
 const { width, height } = Dimensions.get('window');
 
-export default function OnboardingScreen({ navigation }: Props) {
+export default function FinalOnboardingScreen({ navigation }: Props) {
   const handleSignUp = () => {
     navigation.navigate('SignUp');
   };
