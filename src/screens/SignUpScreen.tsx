@@ -9,12 +9,14 @@ import {
   Platform,
   ScrollView,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
+import { validateEmail, validatePassword, validateName } from '../utils/validation';
+import CustomAlert from '../components/CustomAlert';
 
 type SignUpScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -26,6 +28,7 @@ interface Props {
 }
 
 export default function SignUpScreen({ navigation }: Props) {
+  const { register } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -34,50 +37,90 @@ export default function SignUpScreen({ navigation }: Props) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Alert state
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{
+    title: string;
+    message?: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>;
+  }>({
+    title: '',
+    type: 'info',
+  });
+
+  const showAlert = (
+    title: string,
+    message?: string,
+    type: 'success' | 'error' | 'warning' | 'info' = 'info',
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>
+  ) => {
+    setAlertConfig({ title, message, type, buttons });
+    setAlertVisible(true);
+  };
+
   const handleSignUp = async () => {
-    if (!fullName.trim()) {
-      Alert.alert('Error', 'Please enter your full name');
+    // Validate full name
+    const nameValidation = validateName(fullName);
+    if (!nameValidation.isValid) {
+      showAlert('Error', nameValidation.error, 'error');
       return;
     }
 
-    if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email');
+    // Validate email
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      showAlert('Error', emailValidation.error, 'error');
       return;
     }
 
-    if (!password.trim()) {
-      Alert.alert('Error', 'Please enter a password');
+    // Validate password
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      showAlert('Error', passwordValidation.error, 'error');
       return;
     }
 
+    // Check password match
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      showAlert('Error', 'Passwords do not match', 'error');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Real API call
+      await register({
+        email: email.trim(),
+        password: password,
+        name: fullName.trim(),
+      });
 
-      Alert.alert(
+      showAlert(
         'Success!',
         'Account created successfully',
+        'success',
         [
           {
             text: 'Continue',
-            onPress: () => navigation.replace('Paywall'),
+            onPress: () => {
+              setAlertVisible(false);
+              navigation.navigate('SignIn');
+            },
           },
         ]
       );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create account. Please try again.');
+    } catch (error: any) {
+      showAlert('Error', error.message || 'Failed to create account. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -224,6 +267,15 @@ export default function SignUpScreen({ navigation }: Props) {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onDismiss={() => setAlertVisible(false)}
+      />
     </View>
   );
 }

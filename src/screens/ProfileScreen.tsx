@@ -7,13 +7,15 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserSubscription } from '../types';
+import { useAuth } from '../hooks/useAuth';
+import CustomAlert from '../components/CustomAlert';
+import { CommonActions } from '@react-navigation/native';
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -22,8 +24,39 @@ interface Props {
 }
 
 export default function ProfileScreen({ navigation }: Props) {
+  const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState(true);
   const [autoSave, setAutoSave] = useState(false);
+
+  // Alert state
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{
+    title: string;
+    message?: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>;
+  }>({
+    title: '',
+    type: 'info',
+  });
+
+  const showAlert = (
+    title: string,
+    message?: string,
+    type: 'success' | 'error' | 'warning' | 'info' = 'info',
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>
+  ) => {
+    setAlertConfig({ title, message, type, buttons });
+    setAlertVisible(true);
+  };
 
   const [subscription] = useState<UserSubscription>({
     isActive: false,
@@ -42,9 +75,10 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const handleSupport = () => {
-    Alert.alert(
+    showAlert(
       'Support',
       'How can we help you?',
+      'info',
       [
         { text: 'FAQ', onPress: () => console.log('Open FAQ') },
         { text: 'Contact Us', onPress: () => console.log('Open contact') },
@@ -54,12 +88,32 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const handleLogout = () => {
-    Alert.alert(
+    showAlert(
       'Sign Out',
       'Are you sure you want to sign out?',
+      'warning',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: () => console.log('Logout') },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setAlertVisible(false);
+              await logout();
+
+              // Reset navigation stack and go to Welcome screen
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Welcome' }],
+                })
+              );
+            } catch (error: any) {
+              showAlert('Error', error.message || 'Failed to sign out. Please try again.', 'error');
+            }
+          }
+        },
       ]
     );
   };
@@ -135,11 +189,13 @@ export default function ProfileScreen({ navigation }: Props) {
                   end={{ x: 1, y: 1 }}
                   style={styles.avatar}
                 >
-                  <Text style={styles.avatarText}>JD</Text>
+                  <Text style={styles.avatarText}>
+                    {user?.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
+                  </Text>
                 </LinearGradient>
               </View>
-              <Text style={styles.userName}>John Doe</Text>
-              <Text style={styles.userEmail}>john.doe@example.com</Text>
+              <Text style={styles.userName}>{user?.name || 'User'}</Text>
+              <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
             </View>
 
             {/* Stats Cards */}
@@ -220,6 +276,15 @@ export default function ProfileScreen({ navigation }: Props) {
           </ScrollView>
         </SafeAreaView>
       </LinearGradient>
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onDismiss={() => setAlertVisible(false)}
+      />
     </View>
   );
 }

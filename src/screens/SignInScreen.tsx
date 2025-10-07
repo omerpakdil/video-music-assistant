@@ -9,12 +9,14 @@ import {
   Platform,
   ScrollView,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
+import { validateEmail } from '../utils/validation';
+import CustomAlert from '../components/CustomAlert';
 
 type SignInScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -26,40 +28,69 @@ interface Props {
 }
 
 export default function SignInScreen({ navigation }: Props) {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Alert state
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{
+    title: string;
+    message?: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>;
+  }>({
+    title: '',
+    type: 'info',
+  });
+
+  const showAlert = (
+    title: string,
+    message?: string,
+    type: 'success' | 'error' | 'warning' | 'info' = 'info',
+    buttons?: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }>
+  ) => {
+    setAlertConfig({ title, message, type, buttons });
+    setAlertVisible(true);
+  };
+
   const handleSignIn = async () => {
-    if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email');
+    // Validate email
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      showAlert('Error', emailValidation.error, 'error');
       return;
     }
 
+    // Check password is not empty
     if (!password.trim()) {
-      Alert.alert('Error', 'Please enter your password');
+      showAlert('Error', 'Please enter your password', 'error');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Real API call
+      await login({
+        email: email.trim(),
+        password: password,
+      });
 
-      Alert.alert(
-        'Welcome Back!',
-        'Signed in successfully',
-        [
-          {
-            text: 'Continue',
-            onPress: () => navigation.replace('Paywall'),
-          },
-        ]
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Invalid email or password. Please try again.');
+      // Navigate to main tabs on success
+      navigation.replace('MainTabs');
+    } catch (error: any) {
+      showAlert('Error', error.message || 'Invalid email or password. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -74,9 +105,10 @@ export default function SignInScreen({ navigation }: Props) {
   };
 
   const handleForgotPassword = () => {
-    Alert.alert(
+    showAlert(
       'Reset Password',
       'Password reset link will be sent to your email',
+      'info',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Send', onPress: () => console.log('Password reset sent') },
@@ -204,6 +236,15 @@ export default function SignInScreen({ navigation }: Props) {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onDismiss={() => setAlertVisible(false)}
+      />
     </View>
   );
 }
