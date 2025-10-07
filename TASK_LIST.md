@@ -18,6 +18,9 @@
 - [x] Profile screen with real user data
 - [x] Backend user routes (register, login, profile, update, delete)
 - [x] Backend middleware (auth, rate limiter, error handler)
+- [x] MongoDB integration for persistent user storage
+- [x] User model with Mongoose schema
+- [x] Database connection configuration
 
 ### UI/UX Improvements
 - [x] CustomAlert component (success, error, warning, info types)
@@ -36,16 +39,6 @@
 
 ## 🚧 In Progress
 
-### Backend Persistence
-- [ ] **Implement persistent user storage**
-  - Current: In-memory storage (users array)
-  - Issue: Data lost on backend restart
-  - Options:
-    - [ ] JSON file storage (quick dev solution)
-    - [ ] SQLite database (better for development)
-    - [ ] MongoDB/PostgreSQL (production-ready)
-  - Priority: HIGH
-
 ---
 
 ## 📝 Backlog
@@ -53,12 +46,16 @@
 ### Core Features - Video & Music
 
 #### Video Upload & Processing
-- [ ] Implement video picker with expo-document-picker
-- [ ] Add video URL input (TikTok, YouTube, Instagram)
-- [ ] URL validation and video download functionality
+- [x] Implement video picker with expo-document-picker
+- [x] Add video URL input (TikTok, YouTube, Instagram)
+- [x] URL validation for supported platforms
+- [x] File size validation (100MB max)
+- [x] Video preview with native controls
+- [x] Video metadata extraction (name, size, type)
 - [ ] Video thumbnail generation
-- [ ] Video duration extraction
-- [ ] File size validation and compression
+- [ ] Video duration extraction from metadata
+- [ ] Video download functionality for URLs
+- [ ] File compression for large videos
 
 #### Video Analysis Integration
 - [ ] Integrate Fal.ai API for video analysis
@@ -157,10 +154,10 @@
 
 ## 🐛 Known Issues
 
-1. **Backend in-memory storage**
-   - Users are lost on backend restart
-   - Need persistent storage implementation
-   - Workaround: Keep backend running during development
+1. **MongoDB connection required**
+   - Backend requires MongoDB Atlas connection string or local MongoDB instance
+   - Setup: Add MONGODB_URI to backend/.env file
+   - Options: MongoDB Atlas (cloud, recommended) or local installation
 
 2. **Rate limiter cleanup**
    - Rate limiter stores grow indefinitely
@@ -174,33 +171,33 @@
 ### Sprint Goal: Core Video & Music Functionality
 
 **High Priority:**
-1. Implement persistent user storage (JSON file or SQLite)
-2. Video upload functionality
-3. Fal.ai video analysis integration
-4. Stable Audio music generation integration
+1. Video upload functionality
+2. Fal.ai video analysis integration
+3. Stable Audio music generation integration
+4. Library screen with generation history
 
 **Medium Priority:**
-5. Library screen with generation history
-6. Preview screen with video player
-7. Export functionality (audio only)
+5. Preview screen with video player
+6. Export functionality (audio only)
+7. Subscription paywall implementation
 
 **Low Priority:**
 8. Advanced settings
 9. Social sharing
-10. Subscription paywall
+10. Offline mode handling
 
 ---
 
 ## 📊 Progress Tracking
 
-**Overall Progress:** 25% Complete
+**Overall Progress:** 30% Complete
 
 | Category | Progress | Status |
 |----------|----------|--------|
-| Authentication | 95% | ✅ Complete |
+| Authentication | 100% | ✅ Complete |
 | UI Components | 80% | ✅ Complete |
-| Backend API | 60% | 🚧 In Progress |
-| Video Processing | 0% | ❌ Not Started |
+| Backend API | 75% | 🚧 In Progress |
+| Video Processing | 40% | 🚧 In Progress |
 | Music Generation | 0% | ❌ Not Started |
 | Subscription | 10% | ❌ Not Started |
 | Export/Share | 0% | ❌ Not Started |
@@ -216,8 +213,10 @@
 - Rate limiting is email-based for login, IP-based for other endpoints
 - All screens use CustomAlert instead of native Alert
 - Expo Go requires IP address for API URL (not localhost)
+- MongoDB integration completed with Mongoose ODM
+- User data is now persistent across backend restarts
 
 ---
 
-**Last Task Completed:** Email-based rate limiting for auth endpoints
-**Next Task:** Implement persistent user storage (JSON file)
+**Last Task Completed:** Video upload functionality with validation and preview
+**Next Task:** Fal.ai video analysis integration

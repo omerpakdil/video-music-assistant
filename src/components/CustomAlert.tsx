@@ -23,6 +23,7 @@ interface CustomAlertProps {
   message?: string;
   type?: 'success' | 'error' | 'warning' | 'info';
   buttons?: CustomAlertButton[];
+  onClose?: () => void;
   onDismiss?: () => void;
 }
 
@@ -34,8 +35,10 @@ export default function CustomAlert({
   message,
   type = 'info',
   buttons = [{ text: 'OK', style: 'default' }],
+  onClose,
   onDismiss,
 }: CustomAlertProps) {
+  const handleDismiss = onClose || onDismiss;
   const getIcon = () => {
     switch (type) {
       case 'success':
@@ -54,8 +57,8 @@ export default function CustomAlert({
     if (button.onPress) {
       button.onPress();
     }
-    if (onDismiss) {
-      onDismiss();
+    if (handleDismiss) {
+      handleDismiss();
     }
   };
 
@@ -64,14 +67,14 @@ export default function CustomAlert({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onDismiss}
+      onRequestClose={handleDismiss}
     >
       <View style={styles.overlay}>
         <BlurView intensity={20} style={styles.blurView}>
           <TouchableOpacity
             style={styles.backdrop}
             activeOpacity={1}
-            onPress={onDismiss}
+            onPress={handleDismiss}
           />
         </BlurView>
 
