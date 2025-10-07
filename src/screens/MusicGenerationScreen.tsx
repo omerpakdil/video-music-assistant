@@ -14,8 +14,10 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoAnalysis, GeneratedMusic } from '../types';
-import { VideoAnalysisService } from '../services/videoAnalysisService';
-import { MusicGenerationService } from '../services/musicGenerationService';
+import { VideoAnalysisService, AnalysisProgress } from '../services/videoAnalysisService';
+import { MusicGenerationService, MusicGenerationProgress } from '../services/musicGenerationService';
+import { HistoryService } from '../services/historyService';
+import CustomAlert from '../components/CustomAlert';
 
 type MusicGenerationScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -65,9 +67,13 @@ export default function MusicGenerationScreen({ navigation, route }: Props) {
   const [progress, setProgress] = useState(0);
   const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null);
   const [generatedMusic, setGeneratedMusic] = useState<GeneratedMusic | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState('');
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({ type: 'error' as const, title: '', message: '' });
 
   const videoAnalysisService = new VideoAnalysisService();
   const musicGenerationService = new MusicGenerationService();
+  const historyService = new HistoryService();
 
   useEffect(() => {
     generateMusic();
@@ -79,25 +85,53 @@ export default function MusicGenerationScreen({ navigation, route }: Props) {
       setCurrentStep(0);
       setProgress(0.1);
 
-      const analysis = await videoAnalysisService.analyzeVideo(videoUri);
+      const analysis = await videoAnalysisService.analyzeVideo(
+        videoUri,
+        (analysisProgress: AnalysisProgress) => {
+          setAnalysisMessage(analysisProgress.message);
+          // Map analysis progress (0-100) to our progress range (0.1-0.3)
+          const mappedProgress = 0.1 + (analysisProgress.progress / 100) * 0.2;
+          setProgress(mappedProgress);
+
+          if (analysisProgress.status === 'completed') {
+            setCurrentStep(1);
+          }
+        }
+      );
+
       setVideoAnalysis(analysis);
       setProgress(0.3);
 
       // Step 2: Process Audio Features
       setCurrentStep(1);
+      setAnalysisMessage('Understanding video rhythm and intensity...');
       await simulateDelay(1500);
       setProgress(0.5);
 
       // Step 3: Generate Music
       setCurrentStep(2);
-      const music = await musicGenerationService.generateMusic(analysis, prompt);
+      setAnalysisMessage('Creating your custom soundtrack...');
+      const music = await musicGenerationService.generateMusic(
+        analysis,
+        prompt,
+        (musicProgress: MusicGenerationProgress) => {
+          setAnalysisMessage(musicProgress.message);
+          // Map music generation progress (0-100) to our progress range (0.5-0.8)
+          const mappedProgress = 0.5 + (musicProgress.progress / 100) * 0.3;
+          setProgress(mappedProgress);
+        }
+      );
       setGeneratedMusic(music);
       setProgress(0.8);
 
       // Step 4: Finalize
       setCurrentStep(3);
+      setAnalysisMessage('Applying finishing touches...');
       await simulateDelay(1000);
       setProgress(1.0);
+
+      // Save to history
+      await historyService.saveGeneration(videoUri, music, analysis);
 
       // Navigate to preview screen
       setTimeout(() => {
@@ -109,20 +143,12 @@ export default function MusicGenerationScreen({ navigation, route }: Props) {
 
     } catch (error) {
       console.error('Music generation failed:', error);
-      Alert.alert(
-        'Generation Failed',
-        'We couldn\'t generate music for your video. Please try again.',
-        [
-          {
-            text: 'Try Again',
-            onPress: () => generateMusic(),
-          },
-          {
-            text: 'Go Back',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      setAlertConfig({
+        type: 'error',
+        title: 'Generation Failed',
+        message: 'We couldn\'t generate music for your video. Please try again.',
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -145,7 +171,7 @@ export default function MusicGenerationScreen({ navigation, route }: Props) {
             <View style={styles.header}>
               <Text style={styles.title}>Generating Your Soundtrack</Text>
               <Text style={styles.subtitle}>
-                This usually takes 10-20 seconds
+                {analysisMessage || 'This usually takes 10-20 seconds'}
               </Text>
             </View>
 
@@ -216,6 +242,34 @@ export default function MusicGenerationScreen({ navigation, route }: Props) {
           </View>
         </SafeAreaView>
       </LinearGradient>
+
+      <CustomAlert
+        visible={alertVisible}
+        type={alertConfig.type}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        onClose={() => {
+          setAlertVisible(false);
+          navigation.goBack();
+        }}
+        buttons={[
+          {
+            text: 'Try Again',
+            onPress: () => {
+              setAlertVisible(false);
+              generateMusic();
+            },
+          },
+          {
+            text: 'Go Back',
+            style: 'cancel',
+            onPress: () => {
+              setAlertVisible(false);
+              navigation.goBack();
+            },
+          },
+        ]}
+      />
     </View>
   );
 }

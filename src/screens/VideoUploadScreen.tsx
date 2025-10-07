@@ -10,6 +10,9 @@ import {
   StatusBar,
   Dimensions,
   Image,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -45,6 +48,8 @@ const MAX_DURATION = 300; // 5 minutes in seconds
 export default function VideoUploadScreen({ navigation }: Props) {
   const [urlInput, setUrlInput] = useState('');
   const [stylePrompt, setStylePrompt] = useState('');
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<VideoSource | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
@@ -146,10 +151,20 @@ export default function VideoUploadScreen({ navigation }: Props) {
     proceedToGeneration(videoSource);
   };
 
-  const proceedToGeneration = (videoSource: VideoSource) => {
+  const proceedToGeneration = (videoSource?: VideoSource) => {
+    const source = videoSource || selectedVideo;
+    if (!source) {
+      showAlert('error', 'No Video Selected', 'Please select a video first.');
+      return;
+    }
+
+    const finalPrompt = useCustomPrompt && customPrompt.trim()
+      ? customPrompt.trim()
+      : stylePrompt.trim();
+
     navigation.navigate('MusicGeneration', {
-      videoUri: videoSource.uri,
-      prompt: stylePrompt.trim() || undefined,
+      videoUri: source.uri,
+      prompt: finalPrompt || undefined,
     });
   };
 
@@ -176,9 +191,18 @@ export default function VideoUploadScreen({ navigation }: Props) {
         style={styles.gradient}
       >
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.content}>
-            {/* Header */}
-            <View style={styles.header}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoid}
+          >
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Header */}
+              <View style={styles.header}>
               <View>
                 <Text style={styles.title}>Create Music</Text>
                 <Text style={styles.subtitle}>Upload video or paste link to get started</Text>
@@ -263,46 +287,94 @@ export default function VideoUploadScreen({ navigation }: Props) {
 
             {/* Music Styles */}
             <View style={styles.styleSection}>
-              <Text style={styles.sectionLabel}>Music Style (Optional)</Text>
-              <View style={styles.styleGrid}>
-                {musicStyles.slice(0, 6).map((style) => (
-                  <TouchableOpacity
-                    key={style.id}
-                    style={[
-                      styles.styleChip,
-                      stylePrompt === style.name && styles.styleChipSelected
-                    ]}
-                    onPress={() => selectStyle(style.name)}
-                  >
-                    <Text style={styles.styleEmoji}>{style.emoji}</Text>
-                    <Text style={[
-                      styles.styleChipText,
-                      stylePrompt === style.name && styles.styleChipTextSelected
-                    ]}>
-                      {style.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.styleSectionHeader}>
+                <Text style={styles.sectionLabel}>Music Style (Optional)</Text>
+                <TouchableOpacity
+                  style={styles.customPromptToggle}
+                  onPress={() => {
+                    setUseCustomPrompt(!useCustomPrompt);
+                    if (!useCustomPrompt) {
+                      setStylePrompt('');
+                    } else {
+                      setCustomPrompt('');
+                    }
+                  }}
+                >
+                  <Ionicons
+                    name={useCustomPrompt ? 'grid' : 'create'}
+                    size={16}
+                    color="#A855F7"
+                  />
+                  <Text style={styles.customPromptToggleText}>
+                    {useCustomPrompt ? 'Presets' : 'Custom'}
+                  </Text>
+                </TouchableOpacity>
               </View>
+
+              {useCustomPrompt ? (
+                <View>
+                  <TextInput
+                    style={styles.customPromptInput}
+                    placeholder="Describe your desired music style..."
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={customPrompt}
+                    onChangeText={setCustomPrompt}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                  <Text style={styles.promptHint}>
+                    Example: "Upbeat electronic dance music with heavy bass and synthesizers"
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.styleGrid}>
+                  {musicStyles.slice(0, 6).map((style) => (
+                    <TouchableOpacity
+                      key={style.id}
+                      style={[
+                        styles.styleChip,
+                        stylePrompt === style.name && styles.styleChipSelected
+                      ]}
+                      onPress={() => selectStyle(style.name)}
+                    >
+                      <Text style={styles.styleEmoji}>{style.emoji}</Text>
+                      <Text style={[
+                        styles.styleChipText,
+                        stylePrompt === style.name && styles.styleChipTextSelected
+                      ]}>
+                        {style.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
-            {/* Generate Button */}
-            <TouchableOpacity
-              style={[styles.generateButton, { opacity: (urlInput.trim() || selectedVideo) ? 1 : 0.5 }]}
-              onPress={handleUrlSubmit}
-              disabled={!(urlInput.trim() || selectedVideo)}
-            >
-              <LinearGradient
-                colors={['#A855F7', '#8B5CF6']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.generateGradient}
+              {/* Generate Button */}
+              <TouchableOpacity
+                style={[styles.generateButton, { opacity: (urlInput.trim() || selectedVideo) ? 1 : 0.5 }]}
+                onPress={() => {
+                  if (selectedVideo) {
+                    proceedToGeneration();
+                  } else {
+                    handleUrlSubmit();
+                  }
+                }}
+                disabled={!(urlInput.trim() || selectedVideo)}
               >
-                <Text style={styles.generateButtonText}>Generate Music</Text>
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+                <LinearGradient
+                  colors={['#A855F7', '#8B5CF6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.generateGradient}
+                >
+                  <Text style={styles.generateButtonText}>Generate Music</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </LinearGradient>
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
 
@@ -327,12 +399,16 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  content: {
+  keyboardAvoid: {
     flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 50,
-    paddingBottom: 100, // Navbar için space
-    justifyContent: 'flex-start',
+    paddingBottom: 120, // Navbar için extra space
   },
 
   // Header
@@ -412,6 +488,45 @@ const styles = StyleSheet.create({
   styleSection: {
     marginBottom: 20,
   },
+  styleSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  customPromptToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.3)',
+  },
+  customPromptToggleText: {
+    fontSize: 12,
+    color: '#A855F7',
+    fontWeight: '600',
+  },
+  customPromptInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 14,
+    color: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    minHeight: 80,
+    marginBottom: 8,
+  },
+  promptHint: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontStyle: 'italic',
+  },
   styleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -488,7 +603,7 @@ const styles = StyleSheet.create({
 
   // Generate Button
   generateButton: {
-    marginTop: 'auto',
+    marginTop: 30,
     marginBottom: 20,
   },
   generateGradient: {

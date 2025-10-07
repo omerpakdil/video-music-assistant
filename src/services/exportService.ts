@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import { ExportOptions } from '../types';
 
 export class ExportService {
@@ -87,19 +88,15 @@ export class ExportService {
 
   async shareFile(fileUri: string, mimeType: string): Promise<void> {
     try {
-      // In a real app, you would use Expo Sharing or similar
-      /*
-      import * as Sharing from 'expo-sharing';
-
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType,
           dialogTitle: 'Share your creation',
+          UTI: mimeType,
         });
+      } else {
+        throw new Error('Sharing is not available on this device');
       }
-      */
-
-      console.log(`Sharing file: ${fileUri} with type: ${mimeType}`);
     } catch (error) {
       console.error('Sharing failed:', error);
       throw new Error('Failed to share file');

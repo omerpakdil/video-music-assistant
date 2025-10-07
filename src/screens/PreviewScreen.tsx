@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,17 @@ import {
   SafeAreaView,
   ScrollView,
   StatusBar,
+  Slider,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video } from 'expo-av';
+import { Video, Audio, AVPlaybackStatus } from 'expo-av';
 import { ExportOptions } from '../types';
 import { ExportService } from '../services/exportService';
+import CustomAlert from '../components/CustomAlert';
 
 type PreviewScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -34,6 +36,11 @@ export default function PreviewScreen({ navigation, route }: Props) {
   const { videoUri, audioUri } = route.params;
   const [isPlaying, setIsPlaying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({ type: 'success' as const, title: '', message: '' });
   const [exportOptions, setExportOptions] = useState<ExportOptions>({
     format: 'mp3',
     quality: 'standard',
@@ -41,17 +48,128 @@ export default function PreviewScreen({ navigation, route }: Props) {
   });
 
   const videoRef = useRef<Video>(null);
+  const audioRef = useRef<Audio.Sound | null>(null);
   const exportService = new ExportService();
+
+  useEffect(() => {
+    setupAudio();
+    return () => {
+      cleanupAudio();
+    };
+  }, []);
+
+  const setupAudio = async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+      });
+
+      // Load audio file
+      if (audioUri && audioUri !== 'mock_audio') {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { shouldPlay: false }
+        );
+        audioRef.current = sound;
+
+        // Get audio duration
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          setDuration((status.durationMillis || 0) / 1000);
+        }
+      }
+    } catch (error) {
+      console.error('Error setting up audio:', error);
+    }
+  };
+
+  const cleanupAudio = async () => {
+    if (audioRef.current) {
+      await audioRef.current.unloadAsync();
+    }
+  };
 
   const togglePlayback = async () => {
     if (!videoRef.current) return;
 
-    if (isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      await videoRef.current.playAsync();
+    try {
+      if (isPlaying) {
+        // Pause both video and audio
+        await videoRef.current.pauseAsync();
+        if (audioRef.current) {
+          await audioRef.current.pauseAsync();
+        }
+        setIsPlaying(false);
+      } else {
+        // Play both video and audio in sync
+        await videoRef.current.playAsync();
+        if (audioRef.current) {
+          await audioRef.current.playAsync();
+        }
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.error('Error toggling playback:', error);
     }
-    setIsPlaying(!isPlaying);
+  };
+
+  const handleVideoStatusUpdate = async (status: AVPlaybackStatus) => {
+    if (!status.isLoaded) return;
+
+    setIsPlaying(status.isPlaying);
+    setCurrentTime((status.positionMillis || 0) / 1000);
+
+    // Sync audio with video position
+    if (audioRef.current && Math.abs(currentTime - (status.positionMillis || 0) / 1000) > 0.1) {
+      try {
+        await audioRef.current.setPositionAsync(status.positionMillis || 0);
+      } catch (error) {
+        console.error('Error syncing audio:', error);
+      }
+    }
+
+    // Loop when video ends
+    if (status.didJustFinish) {
+      await videoRef.current?.setPositionAsync(0);
+      if (audioRef.current) {
+        await audioRef.current.setPositionAsync(0);
+      }
+    }
+  };
+
+  const handleSeek = async (value: number) => {
+    const position = value * duration * 1000; // Convert to milliseconds
+
+    try {
+      if (videoRef.current) {
+        await videoRef.current.setPositionAsync(position);
+      }
+      if (audioRef.current) {
+        await audioRef.current.setPositionAsync(position);
+      }
+      setCurrentTime(value * duration);
+    } catch (error) {
+      console.error('Error seeking:', error);
+    }
+  };
+
+  const toggleMute = async () => {
+    try {
+      if (audioRef.current) {
+        await audioRef.current.setIsMutedAsync(!isMuted);
+        setIsMuted(!isMuted);
+      }
+    } catch (error) {
+      console.error('Error toggling mute:', error);
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleExport = async () => {
@@ -70,29 +188,51 @@ export default function PreviewScreen({ navigation, route }: Props) {
         exportedUri = await exportService.exportAudio(audioUri, exportOptions);
       }
 
-      Alert.alert(
-        'Export Complete!',
-        `Your ${exportOptions.includeVideo ? 'video with soundtrack' : 'audio track'} has been saved to your device.`,
-        [
-          {
-            text: 'Share',
-            onPress: () => exportService.shareFile(
-              exportedUri,
-              exportOptions.includeVideo ? 'video/mp4' : `audio/${exportOptions.format}`
-            ),
-          },
-          {
-            text: 'Create Another',
-            onPress: () => navigation.navigate('VideoUpload'),
-          },
-          {
-            text: 'Done',
-            onPress: () => navigation.navigate('MainTabs'),
-          },
-        ]
-      );
+      setAlertConfig({
+        type: 'success',
+        title: 'Export Complete!',
+        message: `Your ${exportOptions.includeVideo ? 'video with soundtrack' : 'audio track'} has been saved successfully.`,
+      });
+      setAlertVisible(true);
     } catch (error) {
-      Alert.alert('Export Failed', 'Please try again.');
+      setAlertConfig({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Please try again.',
+      });
+      setAlertVisible(true);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      setIsExporting(true);
+
+      let exportedUri: string;
+      let mimeType: string;
+
+      if (exportOptions.includeVideo) {
+        exportedUri = await exportService.exportVideoWithAudio(
+          videoUri,
+          audioUri,
+          exportOptions
+        );
+        mimeType = 'video/mp4';
+      } else {
+        exportedUri = await exportService.exportAudio(audioUri, exportOptions);
+        mimeType = exportOptions.format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+      }
+
+      await exportService.shareFile(exportedUri, mimeType);
+    } catch (error) {
+      setAlertConfig({
+        type: 'error',
+        title: 'Share Failed',
+        message: 'Unable to share your file. Please try again.',
+      });
+      setAlertVisible(true);
     } finally {
       setIsExporting(false);
     }
@@ -144,11 +284,7 @@ export default function PreviewScreen({ navigation, route }: Props) {
                   useNativeControls={false}
                   resizeMode="contain"
                   isLooping
-                  onPlaybackStatusUpdate={(status) => {
-                    if ('isPlaying' in status) {
-                      setIsPlaying(status.isPlaying);
-                    }
-                  }}
+                  onPlaybackStatusUpdate={handleVideoStatusUpdate}
                 />
 
                 <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
@@ -158,6 +294,36 @@ export default function PreviewScreen({ navigation, route }: Props) {
                     color="white"
                   />
                 </TouchableOpacity>
+
+                {/* Timeline and controls */}
+                <View style={styles.timelineContainer}>
+                  <View style={styles.timelineControls}>
+                    <TouchableOpacity onPress={toggleMute} style={styles.muteButton}>
+                      <Ionicons
+                        name={isMuted ? 'volume-mute' : 'volume-high'}
+                        size={18}
+                        color="white"
+                      />
+                    </TouchableOpacity>
+
+                    <View style={styles.timeDisplay}>
+                      <Text style={styles.timeText}>
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Slider
+                    style={styles.slider}
+                    value={duration > 0 ? currentTime / duration : 0}
+                    onValueChange={handleSeek}
+                    minimumValue={0}
+                    maximumValue={1}
+                    minimumTrackTintColor="#A855F7"
+                    maximumTrackTintColor="rgba(255, 255, 255, 0.3)"
+                    thumbTintColor="#A855F7"
+                  />
+                </View>
               </View>
 
               <View style={styles.controls}>
@@ -166,9 +332,21 @@ export default function PreviewScreen({ navigation, route }: Props) {
                   <Text style={styles.controlButtonText}>Generate Variation</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.controlButton}>
-                  <Ionicons name="volume-high" size={16} color="#A855F7" />
-                  <Text style={styles.controlButtonText}>Audio Only</Text>
+                <TouchableOpacity
+                  style={styles.controlButton}
+                  onPress={() => setExportOptions(prev => ({
+                    ...prev,
+                    includeVideo: !prev.includeVideo
+                  }))}
+                >
+                  <Ionicons
+                    name={exportOptions.includeVideo ? "videocam" : "volume-high"}
+                    size={16}
+                    color="#A855F7"
+                  />
+                  <Text style={styles.controlButtonText}>
+                    {exportOptions.includeVideo ? 'Video + Audio' : 'Audio Only'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -259,30 +437,48 @@ export default function PreviewScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={[styles.exportButton, { opacity: isExporting ? 0.6 : 1 }]}
-                onPress={handleExport}
-                disabled={isExporting}
-              >
-                <LinearGradient
-                  colors={['#A855F7', '#8B5CF6']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.exportGradient}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[styles.shareButton, { opacity: isExporting ? 0.6 : 1 }]}
+                  onPress={handleShare}
+                  disabled={isExporting}
                 >
-                  {isExporting ? (
-                    <>
-                      <Text style={styles.exportButtonText}>Exporting...</Text>
-                      <Ionicons name="hourglass" size={16} color="white" />
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.exportButtonText}>Export & Save</Text>
-                      <Ionicons name="download" size={16} color="white" />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={['#10B981', '#059669']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.buttonGradient}
+                  >
+                    <Ionicons name="share-social" size={16} color="white" />
+                    <Text style={styles.buttonText}>Share</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.exportButton, { opacity: isExporting ? 0.6 : 1 }]}
+                  onPress={handleExport}
+                  disabled={isExporting}
+                >
+                  <LinearGradient
+                    colors={['#A855F7', '#8B5CF6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.buttonGradient}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Ionicons name="hourglass" size={16} color="white" />
+                        <Text style={styles.buttonText}>Exporting...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="download" size={16} color="white" />
+                        <Text style={styles.buttonText}>Export</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
 
               <View style={styles.infoSection}>
                 <View style={styles.infoItem}>
@@ -302,6 +498,35 @@ export default function PreviewScreen({ navigation, route }: Props) {
           </ScrollView>
         </SafeAreaView>
       </LinearGradient>
+
+      <CustomAlert
+        visible={alertVisible}
+        type={alertConfig.type}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        onClose={() => setAlertVisible(false)}
+        buttons={
+          alertConfig.type === 'success'
+            ? [
+                {
+                  text: 'Create Another',
+                  onPress: () => {
+                    setAlertVisible(false);
+                    navigation.navigate('VideoUpload');
+                  },
+                },
+                {
+                  text: 'Done',
+                  style: 'cancel',
+                  onPress: () => {
+                    setAlertVisible(false);
+                    navigation.navigate('MainTabs');
+                  },
+                },
+              ]
+            : undefined
+        }
+      />
     </View>
   );
 }
@@ -357,13 +582,44 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    transform: [{ translateX: -15 }, { translateY: -15 }],
+    transform: [{ translateX: -24 }, { translateY: -24 }],
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: 'rgba(168, 85, 247, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  timelineContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  timelineControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  muteButton: {
+    padding: 4,
+  },
+  timeDisplay: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  slider: {
+    width: '100%',
+    height: 20,
   },
   controls: {
     flexDirection: 'row',
@@ -448,11 +704,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FFFFFF',
   },
-  exportButton: {
-    borderRadius: 12,
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
     marginBottom: 16,
   },
-  exportGradient: {
+  shareButton: {
+    flex: 1,
+    borderRadius: 12,
+  },
+  exportButton: {
+    flex: 1,
+    borderRadius: 12,
+  },
+  buttonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -460,7 +725,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 6,
   },
-  exportButtonText: {
+  buttonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
