@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import connectDB from './config/database';
 import { userRouter } from './routes/user';
 import { subscriptionRouter } from './routes/subscription';
 import { errorHandler } from './middleware/errorHandler';
@@ -43,11 +44,18 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🎵 Video Music Assistant API v1.0.0`);
-  console.log(`🔗 CORS enabled for Expo dev server`);
-});
+// Connect to MongoDB and start server
+const startServer = async () => {
+  await connectDB();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log(`🎵 Video Music Assistant API v1.0.0`);
+    console.log(`🔗 CORS enabled for Expo dev server`);
+  });
+};
+
+startServer();
 
 export default app;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import User from '../models/User';
 import {
   asyncHandler,
   ValidationError,
@@ -15,21 +16,6 @@ import {
 import { loginRateLimiter, rateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
-
-// In-memory user storage (replace with database in production)
-interface User {
-  id: string;
-  email: string;
-  password: string;
-  name: string;
-  role: 'user' | 'admin';
-  subscription: 'free' | 'premium';
-  generationsLeft: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const users: User[] = [];
 
 /**
  * POST /api/users/register
@@ -51,7 +37,7 @@ router.post(
     }
 
     // Check if user already exists
-    const existingUser = users.find((u) => u.email === email);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       throw new ValidationError('User with this email already exists');
     }
@@ -60,26 +46,18 @@ router.post(
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const user: User = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const user = await User.create({
       email,
       password: hashedPassword,
       name,
-      role: 'user',
-      subscription: 'free',
-      generationsLeft: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    users.push(user);
+    });
 
     // Generate token
     const token = generateToken({
-      userId: user.id,
+      userId: user._id.toString(),
       email: user.email,
-      role: user.role,
-      subscription: user.subscription,
+      role: 'user',
+      subscription: 'free',
     });
 
     // Return user data (without password)
@@ -87,12 +65,10 @@ router.post(
       success: true,
       data: {
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           name: user.name,
-          role: user.role,
-          subscription: user.subscription,
-          generationsLeft: user.generationsLeft,
+          createdAt: user.createdAt,
         },
         token,
       },
@@ -116,7 +92,7 @@ router.post(
     }
 
     // Find user
-    const user = users.find((u) => u.email === email);
+    const user = await User.findOne({ email });
     if (!user) {
       throw new AuthenticationError('Invalid email or password');
     }
@@ -129,10 +105,10 @@ router.post(
 
     // Generate token
     const token = generateToken({
-      userId: user.id,
+      userId: user._id.toString(),
       email: user.email,
-      role: user.role,
-      subscription: user.subscription,
+      role: 'user',
+      subscription: 'free',
     });
 
     // Return user data (without password)
@@ -140,12 +116,10 @@ router.post(
       success: true,
       data: {
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           name: user.name,
-          role: user.role,
-          subscription: user.subscription,
-          generationsLeft: user.generationsLeft,
+          createdAt: user.createdAt,
         },
         token,
       },
@@ -161,7 +135,7 @@ router.get(
   '/me',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const user = users.find((u) => u.id === req.user?.userId);
+    const user = await User.findById(req.user?.userId).select('-password');
 
     if (!user) {
       throw new NotFoundError('User');
@@ -171,12 +145,9 @@ router.get(
       success: true,
       data: {
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           name: user.name,
-          role: user.role,
-          subscription: user.subscription,
-          generationsLeft: user.generationsLeft,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
@@ -193,7 +164,7 @@ router.put(
   '/me',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const user = users.find((u) => u.id === req.user?.userId);
+    const user = await User.findById(req.user?.userId);
 
     if (!user) {
       throw new NotFoundError('User');
@@ -205,25 +176,22 @@ router.put(
     if (name) user.name = name;
     if (email) {
       // Check if email is already taken
-      const existingUser = users.find((u) => u.email === email && u.id !== user.id);
+      const existingUser = await User.findOne({ email, _id: { $ne: user._id } });
       if (existingUser) {
         throw new ValidationError('Email is already taken');
       }
       user.email = email;
     }
 
-    user.updatedAt = new Date();
+    await user.save();
 
     res.json({
       success: true,
       data: {
         user: {
-          id: user.id,
+          id: user._id,
           email: user.email,
           name: user.name,
-          role: user.role,
-          subscription: user.subscription,
-          generationsLeft: user.generationsLeft,
           updatedAt: user.updatedAt,
         },
       },
@@ -239,7 +207,7 @@ router.post(
   '/change-password',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const user = users.find((u) => u.id === req.user?.userId);
+    const user = await User.findById(req.user?.userId);
 
     if (!user) {
       throw new NotFoundError('User');
@@ -263,7 +231,7 @@ router.post(
 
     // Hash new password
     user.password = await bcrypt.hash(newPassword, 10);
-    user.updatedAt = new Date();
+    await user.save();
 
     res.json({
       success: true,
@@ -280,13 +248,11 @@ router.delete(
   '/me',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const userIndex = users.findIndex((u) => u.id === req.user?.userId);
+    const user = await User.findByIdAndDelete(req.user?.userId);
 
-    if (userIndex === -1) {
+    if (!user) {
       throw new NotFoundError('User');
     }
-
-    users.splice(userIndex, 1);
 
     res.json({
       success: true,
